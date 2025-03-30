@@ -1,206 +1,172 @@
-import numpy as np
-import matplotlib.pyplot as plt
-import pandas as pd
 import tkinter as tk
 from tkinter import ttk
+import numpy as np
+import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
-class DifferentialEquationSolver:
-    def __init__(self):
-        self.root = tk.Tk()
-        self.root.title("Solver de Ecuaciones Diferenciales")
-        self.root.geometry("1000x800")
+# Método de Euler Normal
+def euler_normal(f, y0, x0, xn, h):
+    x_vals = np.arange(x0, xn + h, h)
+    y_vals = [y0]
+    for i in range(1, len(x_vals)):
+        y_next = y_vals[-1] + h * f(x_vals[i - 1], y_vals[-1])
+        y_vals.append(y_next)
+    return x_vals, y_vals
+
+
+# Método de Euler Mejorado (Heun)
+def euler_mejorado(f, y0, x0, xn, h):
+    x_vals = np.arange(x0, xn + h, h)
+    y_vals = [y0]
+    for i in range(1, len(x_vals)):
+        x = x_vals[i - 1]
+        y = y_vals[-1]
+        # Paso predictor (Euler normal)
+        y_pred = y + h * f(x, y)
+        # Paso corrector (promedio de pendientes)
+        y_next = y + (h / 2) * (f(x, y) + f(x + h, y_pred))
+        y_vals.append(y_next)
+    return x_vals, y_vals
+
+
+# Método de Runge-Kutta de cuarto orden
+def runge_kutta_4(f, y0, x0, xn, h):
+    x_vals = np.arange(x0, xn + h, h)
+    y_vals = [y0]
+    for i in range(1, len(x_vals)):
+        x = x_vals[i - 1]
+        y = y_vals[-1]
+        k1 = h * f(x, y)
+        k2 = h * f(x + h / 2, y + k1 / 2)
+        k3 = h * f(x + h / 2, y + k2 / 2)
+        k4 = h * f(x + h, y + k3)
+        y_next = y + (k1 + 2 * k2 + 2 * k3 + k4) / 6
+        y_vals.append(y_next)
+    return x_vals, y_vals
+
+
+# Solución exacta para comparar (personalizable)
+def exact_solution(x):
+    return -x - 1 + 2 * np.exp(x)  # Solución exacta para dy/dx = x + y con y(0) = 1
+
+
+# Función para calcular y mostrar resultados en la interfaz
+def calculate_and_display():
+    try:
+        # Obtener valores de entrada
+        y0 = float(entry_y0.get())
+        x0 = float(entry_x0.get())
+        xn = float(entry_xn.get())
+        h = float(entry_h.get())
         
-        self.setup_ui()
-        self.set_default_values()
+        # Definir la ecuación diferencial dy/dx = f(x, y)
+        def f(x, y):
+            return x + y  # Ejemplo: dy/dx = x + y
         
-    def setup_ui(self):
-        """Configura la interfaz gráfica de usuario"""
-        # Frame de controles
-        control_frame = ttk.LabelFrame(self.root, text="Parámetros", padding=10)
-        control_frame.pack(side=tk.TOP, fill=tk.X, padx=10, pady=5)
+        # Resolver con Euler Normal
+        x_euler, y_euler = euler_normal(f, y0, x0, xn, h)
+        y_exact_euler = [exact_solution(x) for x in x_euler]
         
-        # Campos de entrada
-        ttk.Label(control_frame, text="Condición inicial x₀:").grid(row=0, column=0, sticky=tk.W)
-        self.x0_entry = ttk.Entry(control_frame)
-        self.x0_entry.grid(row=0, column=1, padx=5, pady=2)
+        # Resolver con Euler Mejorado
+        x_euler_mejorado, y_euler_mejorado = euler_mejorado(f, y0, x0, xn, h)
+        y_exact_euler_mejorado = [exact_solution(x) for x in x_euler_mejorado]
         
-        ttk.Label(control_frame, text="Condición inicial y₀:").grid(row=1, column=0, sticky=tk.W)
-        self.y0_entry = ttk.Entry(control_frame)
-        self.y0_entry.grid(row=1, column=1, padx=5, pady=2)
+        # Resolver con Runge-Kutta
+        x_rk, y_rk = runge_kutta_4(f, y0, x0, xn, h)
+        y_exact_rk = [exact_solution(x) for x in x_rk]
         
-        ttk.Label(control_frame, text="Tamaño de paso (h):").grid(row=2, column=0, sticky=tk.W)
-        self.h_entry = ttk.Entry(control_frame)
-        self.h_entry.grid(row=2, column=1, padx=5, pady=2)
+        # Crear tabla comparativa
+        table_data = []
+        for x, ye, yem, yrk, y_ex in zip(x_euler, y_euler, y_euler_mejorado, y_rk, y_exact_euler):
+            error_euler = abs(ye - y_ex)
+            error_euler_mejorado = abs(yem - y_ex)
+            error_rk = abs(yrk - y_ex)
+            table_data.append([x, ye, yem, yrk, y_ex, error_euler, error_euler_mejorado, error_rk])
         
-        ttk.Label(control_frame, text="Número de pasos (n):").grid(row=3, column=0, sticky=tk.W)
-        self.n_entry = ttk.Entry(control_frame)
-        self.n_entry.grid(row=3, column=1, padx=5, pady=2)
+        # Limpiar tabla anterior
+        for row in tree.get_children():
+            tree.delete(row)
         
-        # Botón de cálculo
-        self.calculate_btn = ttk.Button(control_frame, text="Calcular", command=self.solve)
-        self.calculate_btn.grid(row=4, column=0, columnspan=2, pady=10)
+        # Insertar datos en la tabla
+        for row in table_data:
+            tree.insert("", "end", values=row)
         
-        # Frame de resultados
-        result_frame = ttk.Frame(self.root)
-        result_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
-        # Notebook (pestañas) para resultados
-        self.notebook = ttk.Notebook(result_frame)
-        self.notebook.pack(fill=tk.BOTH, expand=True)
-        
-        # Pestaña de tabla
-        self.table_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.table_tab, text="Tabla de Resultados")
-        
-        # Pestaña de gráfico
-        self.plot_tab = ttk.Frame(self.notebook)
-        self.notebook.add(self.plot_tab, text="Gráfico Comparativo")
-        
-    def set_default_values(self):
-        """Establece valores por defecto"""
-        self.x0_entry.insert(0, "0.0")
-        self.y0_entry.insert(0, "1.0")
-        self.h_entry.insert(0, "0.1")
-        self.n_entry.insert(0, "10")
-    
-    def equation(self, x, y):
-        """Ecuación diferencial: dy/dx = x - y"""
-        return x - y
-    
-    def exact_solution(self, x, x0, y0):
-        """Solución exacta para dy/dx = x - y con condición inicial y(x0) = y0"""
-        return (x0 - y0 - 1) * np.exp(-(x - x0)) + x - 1
-    
-    def euler_method(self, f, x0, y0, h, n):
-        """Método de Euler para resolver EDOs"""
-        x, y = x0, y0
-        xs, ys = [x], [y]
-        for _ in range(n):
-            y += h * f(x, y)
-            x += h
-            xs.append(x)
-            ys.append(y)
-        return xs, ys
-    
-    def runge_kutta_method(self, f, x0, y0, h, n):
-        """Método de Runge-Kutta (RK4) para resolver EDOs"""
-        x, y = x0, y0
-        xs, ys = [x], [y]
-        for _ in range(n):
-            k1 = h * f(x, y)
-            k2 = h * f(x + h/2, y + k1/2)
-            k3 = h * f(x + h/2, y + k2/2)
-            k4 = h * f(x + h, y + k3)
-            y += (k1 + 2*k2 + 2*k3 + k4) / 6
-            x += h
-            xs.append(x)
-            ys.append(y)
-        return xs, ys
-    
-    def solve(self):
-        """Resuelve la ecuación y muestra los resultados"""
-        try:
-            # Obtener parámetros de la interfaz
-            x0 = float(self.x0_entry.get())
-            y0 = float(self.y0_entry.get())
-            h = float(self.h_entry.get())
-            n = int(self.n_entry.get())
-            
-            # Validar entradas
-            if h <= 0:
-                raise ValueError("El tamaño de paso (h) debe ser positivo")
-            if n <= 0:
-                raise ValueError("El número de pasos (n) debe ser positivo")
-            
-            # Resolver con diferentes métodos
-            xs_euler, ys_euler = self.euler_method(self.equation, x0, y0, h, n)
-            xs_rk, ys_rk = self.runge_kutta_method(self.equation, x0, y0, h, n)
-            
-            # Solución exacta (solo si es posible)
-            xs_exact = np.linspace(x0, x0 + n*h, 100)
-            ys_exact = self.exact_solution(xs_exact, x0, y0)
-            
-            # Mostrar resultados
-            self.show_results_table(xs_euler, ys_euler, ys_rk, ys_exact)
-            self.show_plot(xs_euler, ys_euler, xs_rk, ys_rk, xs_exact, ys_exact)
-            
-        except ValueError as e:
-            tk.messagebox.showerror("Error de entrada", f"Entrada inválida: {str(e)}")
-        except Exception as e:
-            tk.messagebox.showerror("Error", f"Ocurrió un error: {str(e)}")
-    
-    def show_results_table(self, xs, ys_euler, ys_rk, ys_exact):
-        """Muestra los resultados en una tabla"""
-        # Limpiar pestaña anterior
-        for widget in self.table_tab.winfo_children():
-            widget.destroy()
-        
-        # Crear Treeview (tabla)
-        tree = ttk.Treeview(self.table_tab, columns=("x", "Euler", "RK4", "Exacta"), show="headings")
-        
-        # Configurar columnas
-        tree.heading("x", text="x")
-        tree.heading("Euler", text="Método de Euler")
-        tree.heading("RK4", text="Método RK4")
-        tree.heading("Exacta", text="Solución Exacta")
-        
-        tree.column("x", width=100, anchor=tk.CENTER)
-        tree.column("Euler", width=150, anchor=tk.CENTER)
-        tree.column("RK4", width=150, anchor=tk.CENTER)
-        tree.column("Exacta", width=150, anchor=tk.CENTER)
-        
-        # Añadir scrollbar
-        scrollbar = ttk.Scrollbar(self.table_tab, orient=tk.VERTICAL, command=tree.yview)
-        tree.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        tree.pack(fill=tk.BOTH, expand=True)
-        
-        # Insertar datos
-        for i, x in enumerate(xs):
-            exact_val = self.exact_solution(x, float(self.x0_entry.get()), float(self.y0_entry.get()))
-            tree.insert("", tk.END, values=(
-                f"{x:.4f}",
-                f"{ys_euler[i]:.6f}",
-                f"{ys_rk[i]:.6f}" if i < len(ys_rk) else "",
-                f"{exact_val:.6f}"
-            ))
-    
-    def show_plot(self, xs_euler, ys_euler, xs_rk, ys_rk, xs_exact, ys_exact):
-        """Muestra el gráfico comparativo"""
-        # Limpiar pestaña anterior
-        for widget in self.plot_tab.winfo_children():
-            widget.destroy()
-        
-        # Crear figura
-        fig, ax = plt.subplots(figsize=(8, 5))
-        
-        # Graficar resultados
-        ax.plot(xs_euler, ys_euler, 'bo-', label="Método de Euler", markersize=4)
-        ax.plot(xs_rk, ys_rk, 'gx-', label="Método RK4", markersize=6)
-        ax.plot(xs_exact, ys_exact, 'r-', label="Solución Exacta", linewidth=2)
-        
-        # Configurar gráfico
+        # Generar gráfica comparativa
+        fig.clear()
+        ax = fig.add_subplot(111)
+        ax.plot(x_euler, y_euler, label="Euler Normal", marker="o", linestyle="--")
+        ax.plot(x_euler_mejorado, y_euler_mejorado, label="Euler Mejorado", marker="s", linestyle="-.")
+        ax.plot(x_rk, y_rk, label="Runge-Kutta 4", marker="x", linestyle="-.")
+        ax.plot(x_euler, y_exact_euler, label="Solución Exacta", linestyle="-", color="black")
         ax.set_title("Comparación de Métodos Numéricos")
         ax.set_xlabel("x")
         ax.set_ylabel("y")
         ax.legend()
         ax.grid(True)
         
-        # Añadir figura a la interfaz
-        canvas = FigureCanvasTkAgg(fig, master=self.plot_tab)
+        # Actualizar el canvas de la gráfica
         canvas.draw()
-        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-        
-        # Añadir barra de herramientas
-        toolbar = NavigationToolbar2Tk(canvas, self.plot_tab)
-        toolbar.update()
-        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
     
-    def run(self):
-        """Ejecuta la aplicación"""
-        self.root.mainloop()
+    except ValueError:
+        tk.messagebox.showerror("Error", "Por favor, ingrese valores numéricos válidos.")
 
-if __name__ == "__main__":
-    app = DifferentialEquationSolver()
-    app.run()
+
+# Configuración de la interfaz gráfica
+root = tk.Tk()
+root.title("Resolución de Ecuaciones Diferenciales")
+
+# Entradas de usuario
+frame_inputs = ttk.Frame(root, padding=10)
+frame_inputs.pack(fill="x")
+
+ttk.Label(frame_inputs, text="y0 (Valor inicial de y):").grid(row=0, column=0, sticky="w")
+entry_y0 = ttk.Entry(frame_inputs)
+entry_y0.grid(row=0, column=1)
+
+ttk.Label(frame_inputs, text="x0 (Valor inicial de x):").grid(row=1, column=0, sticky="w")
+entry_x0 = ttk.Entry(frame_inputs)
+entry_x0.grid(row=1, column=1)
+
+ttk.Label(frame_inputs, text="xn (Valor final de x):").grid(row=2, column=0, sticky="w")
+entry_xn = ttk.Entry(frame_inputs)
+entry_xn.grid(row=2, column=1)
+
+ttk.Label(frame_inputs, text="h (Tamaño del paso):").grid(row=3, column=0, sticky="w")
+entry_h = ttk.Entry(frame_inputs)
+entry_h.grid(row=3, column=1)
+
+# Botón para calcular
+btn_calculate = ttk.Button(frame_inputs, text="Calcular", command=calculate_and_display)
+btn_calculate.grid(row=4, column=0, columnspan=2, pady=10)
+
+# Tabla de resultados
+frame_table = ttk.Frame(root, padding=10)
+frame_table.pack(fill="both", expand=True)
+
+columns = ("x", "Euler", "Euler Mejorado", "Runge-Kutta", "Exacto", "Error Euler", "Error Euler Mejorado", "Error RK4")
+tree = ttk.Treeview(frame_table, columns=columns, show="headings", height=10)
+for col in columns:
+    tree.heading(col, text=col)
+    tree.column(col, width=100, anchor="center")
+tree.pack(side="left", fill="both", expand=True)
+
+scrollbar = ttk.Scrollbar(frame_table, orient="vertical", command=tree.yview)
+scrollbar.pack(side="right", fill="y")
+tree.configure(yscrollcommand=scrollbar.set)
+
+# Gráfica
+frame_graph = ttk.Frame(root, padding=10)
+frame_graph.pack(fill="both", expand=True)
+
+fig = plt.Figure(figsize=(6, 4), dpi=100)
+canvas = FigureCanvasTkAgg(fig, master=frame_graph)
+canvas_widget = canvas.get_tk_widget()
+canvas_widget.pack(fill="both", expand=True)
+
+# Agregar barra de herramientas para zoom, pan, etc.
+toolbar = NavigationToolbar2Tk(canvas, frame_graph)
+toolbar.update()
+canvas_widget.pack(side="top", fill="both", expand=True)
+
+# Ejecutar la aplicación
+root.mainloop()
